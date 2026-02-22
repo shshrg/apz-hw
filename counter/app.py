@@ -10,9 +10,6 @@ class Transaction(BaseModel):
 app = FastAPI()
 balance_table = {}
 
-# @app.get("/messages_service")
-# async def get_messages():
-#     return "messages service is not implemented yet..."
 @app.post("/counter_service")
 async def post_counter(transaction: Transaction):
     user_balance = balance_table.get(transaction.user_Id, 0)

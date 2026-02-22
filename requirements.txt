@@ -1,5 +1,5 @@
-fastapi==0.129.2
+aiohttp==3.11.18
+fastapi==0.131.0
 httpx==0.28.1
-httpx_retries==0.4.6
 pydantic==2.12.5
 uvicorn==0.41.0
