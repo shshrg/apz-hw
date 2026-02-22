@@ -8,21 +8,26 @@ class Message(BaseModel):
     msg: str
 
 app = FastAPI()
-MSGS_URL = "http://localhost:8081"
-LOG_URL = "http://localhost:8082"
+MSGS_URL = "http://localhost:8081/messages_service"
+LOG_URL = "http://localhost:8082/logging_service"
 
 # FACADE
 
 @app.get("/facade_service")
 async def get_facade():
-    return
+    facade_response = {}
+    async with httpx.AsyncClient() as client:
+        log_response = await client.get(LOG_URL)
+        msgs_response = await client.get(MSGS_URL)
+    facade_response["logging_response"] = log_response.json()
+    facade_response["messages_response"] = msgs_response.json()
+    return facade_response
 
 @app.post("/facade_service")
 async def post_facade(msg: Message):
     msg_id = str(uuid.uuid4())
     async with httpx.AsyncClient() as client:
-        await client.post(LOG_URL + "/logging_service", json={"msg_text": msg.msg, "msg_id": msg_id})
-    # log_response = httpx.post(LOG_URL, json={"msg": msg.msg, "id": msg_id})
+        await client.post(LOG_URL, json={"msg_text": msg.msg, "msg_id": msg_id})
     return
 
 

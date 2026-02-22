@@ -11,8 +11,10 @@ app = FastAPI()
 msgs_table = {}
 # LOGGING
 
+@app.get("/logging_service")
+async def get_logging():
+    return " ".join(msgs_table.values())
 
-# here maybe change structure of params idk
 @app.post("/logging_service")
 async def post_logging(msg: Message):
     msg_id = msg.msg_id
