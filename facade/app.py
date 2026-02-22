@@ -1,6 +1,7 @@
 import uvicorn
 from fastapi import FastAPI
 import httpx
+from httpx_retries import RetryTransport
 import uuid
 from pydantic import BaseModel
 
@@ -11,12 +12,11 @@ app = FastAPI()
 MSGS_URL = "http://localhost:8081/messages_service"
 LOG_URL = "http://localhost:8082/logging_service"
 
-# FACADE
 
 @app.get("/facade_service")
 async def get_facade():
     facade_response = {}
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(transport=RetryTransport()) as client:
         log_response = await client.get(LOG_URL)
         msgs_response = await client.get(MSGS_URL)
     facade_response["logging_response"] = log_response.json()

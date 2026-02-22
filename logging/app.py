@@ -9,7 +9,6 @@ class Message(BaseModel):
 
 app = FastAPI()
 msgs_table = {}
-# LOGGING
 
 @app.get("/logging_service")
 async def get_logging():
@@ -19,6 +18,9 @@ async def get_logging():
 async def post_logging(msg: Message):
     msg_id = msg.msg_id
     msg_text = msg.msg_text
+    # deduplication
+    if msg_text in msgs_table.values():
+        return
     msgs_table[msg_id] = msg_text
     print(msg_text)
     return

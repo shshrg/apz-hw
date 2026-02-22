@@ -2,7 +2,6 @@ import uvicorn
 from fastapi import FastAPI
 
 app = FastAPI()
-# MESSAGES
 
 @app.get("/messages_service")
 async def get_messages():
