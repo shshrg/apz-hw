@@ -2,33 +2,50 @@ import uvicorn
 from fastapi import FastAPI
 import httpx
 from httpx_retries import RetryTransport
-import uuid
+import time
 from pydantic import BaseModel
 
-class Message(BaseModel):
-    msg: str
+class ClientMessage(BaseModel):
+    user_Id: int
+    amount: int
 
 app = FastAPI()
-MSGS_URL = "http://localhost:8081/messages_service"
+COUNT_URL = "http://localhost:8081/counter_service"
 LOG_URL = "http://localhost:8082/logging_service"
 
-
-@app.get("/facade_service")
-async def get_facade():
-    facade_response = {}
-    async with httpx.AsyncClient(transport=RetryTransport()) as client:
-        log_response = await client.get(LOG_URL)
-        msgs_response = await client.get(MSGS_URL)
-    facade_response["logging_response"] = log_response.json()
-    facade_response["messages_response"] = msgs_response.json()
-    return facade_response
-
 @app.post("/facade_service")
-async def post_facade(msg: Message):
-    msg_id = str(uuid.uuid4())
+async def post_facade(msg: ClientMessage):
+    timestamp = int(time.time())
+    # TODO: send at the same time
     async with httpx.AsyncClient() as client:
-        await client.post(LOG_URL, json={"msg_text": msg.msg, "msg_id": msg_id})
-    return
+        await client.post(LOG_URL, json={"transaction_ID": timestamp,
+                                        "user_Id": msg.user_Id,
+                                        "amount": msg.amount})
+        balance = await client.post(COUNT_URL, json={"transaction_ID": timestamp,
+                                        "user_Id": msg.user_Id,
+                                        "amount": msg.amount})
+    
+    return {"transaction_ID": timestamp, "balance": balance.json()}
+    # msg_id = str(uuid.uuid4())
+    # async with httpx.AsyncClient() as client:
+    #     await client.post(LOG_URL, json={"msg_text": msg.msg, "msg_id": msg_id})
+    # return
+
+
+@app.get("/facade_service/user/{userId}")
+async def get_user_balance_transactions(userId: str):
+    async with httpx.AsyncClient() as client:
+        log_response = await client.get(LOG_URL+"/user/"+userId)
+        count_response = await client.get(COUNT_URL+"/user/"+userId)
+    return {"balance": count_response.json(),
+            "transactions": log_response.json()}
+
+
+@app.get("/facade_service/accounts")
+async def get_accounts():
+    async with httpx.AsyncClient() as client:
+        count_response = await client.get(COUNT_URL+"/accounts")
+    return count_response.json()
 
 
 if __name__ == "__main__":
