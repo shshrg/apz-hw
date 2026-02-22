@@ -1,7 +1,7 @@
 import uvicorn
 from fastapi import FastAPI
 import httpx
-from httpx_retries import RetryTransport
+import asyncio
 import time
 from pydantic import BaseModel
 
@@ -16,27 +16,24 @@ LOG_URL = "http://localhost:8082/logging_service"
 @app.post("/facade_service")
 async def post_facade(msg: ClientMessage):
     timestamp = int(time.time())
-    # TODO: send at the same time
     async with httpx.AsyncClient() as client:
-        await client.post(LOG_URL, json={"transaction_ID": timestamp,
+        log_task = client.post(LOG_URL, json={"transaction_ID": timestamp,
                                         "user_Id": msg.user_Id,
                                         "amount": msg.amount})
-        balance = await client.post(COUNT_URL, json={"transaction_ID": timestamp,
+        count_task = client.post(COUNT_URL, json={"transaction_ID": timestamp,
                                         "user_Id": msg.user_Id,
                                         "amount": msg.amount})
+        _, count_response = await asyncio.gather(log_task, count_task)
     
-    return {"transaction_ID": timestamp, "balance": balance.json()}
-    # msg_id = str(uuid.uuid4())
-    # async with httpx.AsyncClient() as client:
-    #     await client.post(LOG_URL, json={"msg_text": msg.msg, "msg_id": msg_id})
-    # return
+    return {"transaction_ID": timestamp, "balance": count_response.json()}
 
 
 @app.get("/facade_service/user/{userId}")
 async def get_user_balance_transactions(userId: str):
     async with httpx.AsyncClient() as client:
-        log_response = await client.get(LOG_URL+"/user/"+userId)
-        count_response = await client.get(COUNT_URL+"/user/"+userId)
+        log_task = client.get(LOG_URL+"/user/"+userId)
+        count_task = client.get(COUNT_URL+"/user/"+userId)
+        log_response, count_response = await asyncio.gather(log_task, count_task)
     return {"balance": count_response.json(),
             "transactions": log_response.json()}
 
