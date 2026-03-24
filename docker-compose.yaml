@@ -1,0 +1,78 @@
+name: "micro_hazelcast"
+services:
+  facade-service:
+    build: ./facade
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    ports:
+      - "8080:8080"
+    environment:
+      LOGGING_URL: "http://logging-service:8082"
+      COUNTER_URL: "http://counter-service:8081"
+    depends_on:
+      - logging-service
+      - counter-service
+  
+  logging-service:
+    build: ./logging
+    depends_on:
+      hazelcast-node:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+      replicas: 3
+
+  counter-service:
+    build: ./counter
+    environment:
+      DATABASE_URL: "postgres://counteruser:12345@counter-db:5432/counter-db"
+
+    depends_on:
+      counter-db:
+        condition: service_healthy
+  counter-db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: "12345"
+      POSTGRES_DB: "counter-db"
+      POSTGRES_USER: "counteruser"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./counter/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - counter-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U counteruser -d counter-db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+  hazelcast-node:
+    image: hazelcast/hazelcast:5.3
+    ports:
+      - "5701:5701"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5701/hazelcast/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+volumes:
+  counter-data:

@@ -3,6 +3,7 @@ from fastapi import FastAPI
 import httpx
 import asyncio
 import time
+import os
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 
@@ -26,8 +27,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-COUNT_URL = "http://localhost:8081/counter_service"
-LOG_URL = "http://localhost:8082/logging_service"
+LOG_URL = os.getenv("LOGGING_URL", "http://localhost:8082")
+COUNT_URL = os.getenv("COUNTER_URL", "http://localhost:8081")
+
+LOG_URL = f"{LOG_URL}/logging_service"
+COUNT_URL = f"{COUNT_URL}/counter_service"
 
 
 async def measure_request(func, *args, **kwargs):

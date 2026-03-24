@@ -1,0 +1,24 @@
+###
+POST http://localhost:8080/facade_service
+Content-Type: application/json
+
+{
+    "user_Id": 100,
+    "amount": -500
+}
+###
+POST http://localhost:8080/facade_service
+Content-Type: application/json
+
+{
+    "user_Id": 101,
+    "amount": 150
+}
+###
+GET http://localhost:8080/facade_service/user/100
+
+###
+GET http://localhost:8080/facade_service/accounts
+
+###
+GET http://localhost:8080/facade_service/debug/service_times
