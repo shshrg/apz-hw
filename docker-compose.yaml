@@ -1,4 +1,4 @@
-name: "micro_hazelcast"
+name: "micro_mq"
 services:
   facade-service:
     build: ./facade
@@ -13,10 +13,8 @@ services:
       CONFIG_URL: "http://config-service:8083"
       
     depends_on:
-      - logging-service
-      - counter-service
-      - config-service
-      - kafka
+      kafka:
+        condition: service_started
   
   logging-service:
     build: ./logging
@@ -24,7 +22,7 @@ services:
       hazelcast-node:
         condition: service_healthy
       kafka:
-      config-service:
+        condition: service_started
     environment:
       CONFIG_URL: "http://config-service:8083"
     deploy:
@@ -43,10 +41,10 @@ services:
     depends_on:
       counter-db:
         condition: service_healthy
-      config-service:
   config-service:
+    container_name: config-service
     build: ./config
-    ports: "8083:8083"
+    restart: unless-stopped
   counter-db:
     image: postgres:15-alpine
     restart: always
@@ -104,5 +102,6 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_NUM_PARTITIONS: 3
+    
 volumes:
   counter-data:

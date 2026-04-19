@@ -11,10 +11,13 @@ class Transaction(BaseModel):
     user_Id: int
     amount: int
 
+class ServiceRegistration(BaseModel):
+    service_name: str
+    service_ip: str
+
 logging_map = None
 CONFIG_URL = os.getenv("CONFIG_URL", "http://config-service:8083")
 
-app = FastAPI()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,15 +30,15 @@ async def lifespan(app: FastAPI):
 
     hostname = socket.gethostname()
     ip_addr = socket.gethostbyname(hostname)
-    registration_data = {
-        "service_name": "logging",
-        "service_ip": f"{ip_addr}:8082"
-    }
+    registration_data = ServiceRegistration(service_name="logging",
+                                            service_ip=f"{ip_addr}:8082")
     async with httpx.AsyncClient() as client:
-        await client.post(CONFIG_URL, json=registration_data)
+        await client.post(CONFIG_URL, json=registration_data.model_dump())
     yield
 
     client.shutdown()
+
+app = FastAPI(lifespan=lifespan)
 
 @app.post("/logging_service")
 async def post_logging(transaction: Transaction):

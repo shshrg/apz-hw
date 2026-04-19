@@ -4,41 +4,49 @@ from contextlib import asynccontextmanager
 from pydantic import BaseModel
 import psycopg
 from psycopg.rows import dict_row
-from kafka import KafkaConsumer
-from kafka.errors import NoBrokersAvailable
+from aiokafka import AIOKafkaConsumer
 import os, socket, time, json
 import httpx
 import asyncio
 
 
-consumer = None
-attempts=50
-while True:
-    try:
-        consumer = KafkaConsumer(
-            'transactions',
-            bootstrap_servers=['kafka:9092'],
-            auto_offset_reset='earliest',
-            enable_auto_commit=True,
-            group_id='transactions-group',
-            value_deserializer=lambda x: json.loads(x.decode('utf-8'))
-        )
-        break
-    except NoBrokersAvailable:
-        if attempts > 0:
-            attempts -= 1
-            time.sleep(2)
-        else:
-            print("Error: failed to connect to Kafka.")
-            exit(1)
+# consumer = None
+# attempts=50
+# while True:
+#     try:
+#         consumer = KafkaConsumer(
+#             'transactions',
+#             bootstrap_servers=['kafka:9092'],
+#             auto_offset_reset='earliest',
+#             enable_auto_commit=True,
+#             group_id='transactions-group',
+#             value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+#         )
+#         break
+#     except NoBrokersAvailable:
+#         if attempts > 0:
+#             attempts -= 1
+#             time.sleep(2)
+#         else:
+#             print("Error: failed to connect to Kafka.")
+#             exit(1)
 
 async def consume_kafka():
+    consumer = AIOKafkaConsumer(
+        'transaction-events',
+        bootstrap_servers=['kafka:9092'],
+        group_id='transactions-group',
+        value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+    )
+    await consumer.start()
     try:
-        for message in consumer:
+        async for message in consumer:
             data = message.value
             await save_to_db(data)
     except Exception as e:
         print(f"Kafka consume error: {e}")
+    finally:
+        await consumer.stop()
 
 
 async def save_to_db(data):
@@ -55,7 +63,11 @@ class Transaction(BaseModel):
     user_Id: int
     amount: int
 
-app = FastAPI()
+class ServiceRegistration(BaseModel):
+    service_name: str
+    service_ip: str
+
+
 balance_table = {}
 
 CONFIG_URL = os.getenv("CONFIG_URL", "http://config-service:8083")
@@ -64,16 +76,15 @@ CONFIG_URL = os.getenv("CONFIG_URL", "http://config-service:8083")
 async def lifespan(app: FastAPI):
     hostname = socket.gethostname()
     ip_addr = socket.gethostbyname(hostname)
-    registration_data = {
-        "service_name": "counter",
-        "service_ip": f"{ip_addr}:8081"
-    }
+    registration_data = ServiceRegistration(service_name="counter",
+                                            service_ip=f"{ip_addr}:8081")
     async with httpx.AsyncClient() as client:
-        await client.post(CONFIG_URL, json=registration_data)
+        await client.post(CONFIG_URL, json=registration_data.model_dump())
     
     kafka_task = asyncio.create_task(consume_kafka())
     yield
 
+app = FastAPI(lifespan=lifespan)
 
 conn_string = os.getenv("DATABASE_URL")
 

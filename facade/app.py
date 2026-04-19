@@ -25,17 +25,22 @@ if not producer:
     raise Exception("Could not connect to Kafka. Restarting...")
 
 
-CONFIG_URL = os.getenv("CONFIG_URL", "http://localhost:8083")
+CONFIG_URL = os.getenv("CONFIG_URL", "http://config-service:8083")
 
 
 class ClientMessage(BaseModel):
     user_Id: int
     amount: int
 
+class ServiceRegistration(BaseModel):
+    service_name: str
+    service_ip: str
+
 class ServiceState:
     client: httpx.AsyncClient = None
     log_time: float = 0
     count_time: float = 0
+
 
 state = ServiceState()
 
@@ -46,11 +51,9 @@ async def lifespan(app: FastAPI):
 
     hostname = socket.gethostname()
     ip_addr = socket.gethostbyname(hostname)
-    registration_data = {
-        "service_name": "facade",
-        "service_ip": f"{ip_addr}:8080"
-    }
-    await state.client.post(CONFIG_URL, json=registration_data)
+    registration_data = ServiceRegistration(service_name="facade",
+                                            service_ip=f"{ip_addr}:8080")
+    await state.client.post(CONFIG_URL, json=registration_data.model_dump())
 
     yield
     await state.client.aclose()
@@ -69,9 +72,11 @@ async def measure_request(func, *args, **kwargs):
 
 @app.post("/facade_service")
 async def post_facade(msg: ClientMessage):
-    log_ips = await state.client.post(CONFIG_URL, json={"service_name": "logging"})
+    log_ips = []
+    while not log_ips:
+        log_ips = await state.client.get(f"{CONFIG_URL}/logging")
 
-    log_addr = f"{random.choice(log_ips)}/logging_service"
+    log_addr = f"http://{random.choice(log_ips.json())}/logging_service"
 
 
 
@@ -81,22 +86,23 @@ async def post_facade(msg: ClientMessage):
                                                             "user_Id": msg.user_Id,
                                                             "amount": msg.amount})
 
-    count_task = measure_request(producer.send, 'transaction-events', {"transaction_ID": timestamp,
+    producer.send('transaction-events', {"transaction_ID": timestamp,
                                                             "user_Id": msg.user_Id,
                                                             "amount": msg.amount})
-    (_, log_t), (count_response, count_t) = await asyncio.gather(log_task, count_task)
+    _, log_t = await(log_task)
     state.log_time += log_t
-    state.count_time += count_t
-    return {"transaction_ID": timestamp, "balance": count_response.json()}
+    return {"transaction_ID": timestamp}
 
 
 @app.get("/facade_service/user/{userId}")
 async def get_user_balance_transactions(userId: str):
-    log_ips = await state.client.post(CONFIG_URL, json={"service_name": "logging"})
-    count_ips = await state.client.post(CONFIG_URL, json={"service_name": "count"})
+    log_ips, count_ips = [], []
+    while not log_ips or not count_ips:
+        log_ips = await state.client.get(f"{CONFIG_URL}/logging")
+        count_ips = await state.client.get(f"{CONFIG_URL}/counter")
 
-    log_addr = f"{random.choice(log_ips)}/logging_service"
-    count_addr = f"{random.choice(count_ips)}/counter_service"
+    log_addr = f"http://{random.choice(log_ips.json())}/logging_service"
+    count_addr = f"http://{random.choice(count_ips.json())}/counter_service"
 
     log_task = measure_request(state.client.get, log_addr+"/user/"+userId)
     count_task = measure_request(state.client.get, count_addr+"/user/"+userId)
@@ -110,8 +116,10 @@ async def get_user_balance_transactions(userId: str):
 
 @app.get("/facade_service/accounts")
 async def get_accounts():
-    count_ips = await state.client.post(CONFIG_URL, json={"service_name": "count"})
-    count_addr = f"{random.choice(count_ips)}/counter_service"
+    count_ips = []
+    while not count_ips:
+        count_ips = await state.client.get(f"{CONFIG_URL}/counter")
+    count_addr = f"http://{random.choice(count_ips.json())}/counter_service"
 
     count_task = measure_request(state.client.get, count_addr+"/accounts")
     (count_response, count_t) = await count_task
