@@ -1,7 +1,10 @@
 import uvicorn
 from fastapi import FastAPI
+from contextlib import asynccontextmanager
 from pydantic import BaseModel
 import hazelcast
+import httpx
+import socket, os
 
 class Transaction(BaseModel):
     transaction_ID: int
@@ -9,18 +12,30 @@ class Transaction(BaseModel):
     amount: int
 
 logging_map = None
-
+CONFIG_URL = os.getenv("CONFIG_URL", "http://config-service:8083")
 
 app = FastAPI()
 
-@app.on_event("startup")
-async def startup_event():
-    global logging_map
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     client = hazelcast.HazelcastClient(
         cluster_members=["hazelcast-node:5701"],
         cluster_name="dev"
     )
+    global logging_map
     logging_map = client.get_map("logging-map")
+
+    hostname = socket.gethostname()
+    ip_addr = socket.gethostbyname(hostname)
+    registration_data = {
+        "service_name": "logging",
+        "service_ip": f"{ip_addr}:8082"
+    }
+    async with httpx.AsyncClient() as client:
+        await client.post(CONFIG_URL, json=registration_data)
+    yield
+
+    client.shutdown()
 
 @app.post("/logging_service")
 async def post_logging(transaction: Transaction):

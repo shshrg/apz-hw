@@ -2,10 +2,31 @@ import uvicorn
 from fastapi import FastAPI
 import httpx
 import asyncio
-import time
-import os
+import time, os, json, socket, random
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
+from kafka import KafkaProducer
+from kafka.errors import NoBrokersAvailable
+
+
+
+producer = None
+for i in range(50):
+    try:
+        producer = KafkaProducer(
+            bootstrap_servers=['kafka:9092'],
+            value_serializer=lambda v: json.dumps(v).encode('utf-8')
+        )
+        print("Connected to Kafka successfully.")
+        break
+    except NoBrokersAvailable:
+        time.sleep(2)
+if not producer:
+    raise Exception("Could not connect to Kafka. Restarting...")
+
+
+CONFIG_URL = os.getenv("CONFIG_URL", "http://localhost:8083")
+
 
 class ClientMessage(BaseModel):
     user_Id: int
@@ -22,16 +43,20 @@ state = ServiceState()
 async def lifespan(app: FastAPI):
     limits = httpx.Limits(max_connections=1000, max_keepalive_connections=500)
     state.client = httpx.AsyncClient(timeout=None, limits=limits)
+
+    hostname = socket.gethostname()
+    ip_addr = socket.gethostbyname(hostname)
+    registration_data = {
+        "service_name": "facade",
+        "service_ip": f"{ip_addr}:8080"
+    }
+    await state.client.post(CONFIG_URL, json=registration_data)
+
     yield
     await state.client.aclose()
 
 app = FastAPI(lifespan=lifespan)
 
-LOG_URL = os.getenv("LOGGING_URL", "http://localhost:8082")
-COUNT_URL = os.getenv("COUNTER_URL", "http://localhost:8081")
-
-LOG_URL = f"{LOG_URL}/logging_service"
-COUNT_URL = f"{COUNT_URL}/counter_service"
 
 
 async def measure_request(func, *args, **kwargs):
@@ -44,11 +69,19 @@ async def measure_request(func, *args, **kwargs):
 
 @app.post("/facade_service")
 async def post_facade(msg: ClientMessage):
+    log_ips = await state.client.post(CONFIG_URL, json={"service_name": "logging"})
+
+    log_addr = f"{random.choice(log_ips)}/logging_service"
+
+
+
+
     timestamp = int(time.time())
-    log_task = measure_request(state.client.post, LOG_URL, json={"transaction_ID": timestamp,
+    log_task = measure_request(state.client.post, log_addr, json={"transaction_ID": timestamp,
                                                             "user_Id": msg.user_Id,
                                                             "amount": msg.amount})
-    count_task = measure_request(state.client.post, COUNT_URL, json={"transaction_ID": timestamp,
+
+    count_task = measure_request(producer.send, 'transaction-events', {"transaction_ID": timestamp,
                                                             "user_Id": msg.user_Id,
                                                             "amount": msg.amount})
     (_, log_t), (count_response, count_t) = await asyncio.gather(log_task, count_task)
@@ -59,8 +92,14 @@ async def post_facade(msg: ClientMessage):
 
 @app.get("/facade_service/user/{userId}")
 async def get_user_balance_transactions(userId: str):
-    log_task = measure_request(state.client.get, LOG_URL+"/user/"+userId)
-    count_task = measure_request(state.client.get, COUNT_URL+"/user/"+userId)
+    log_ips = await state.client.post(CONFIG_URL, json={"service_name": "logging"})
+    count_ips = await state.client.post(CONFIG_URL, json={"service_name": "count"})
+
+    log_addr = f"{random.choice(log_ips)}/logging_service"
+    count_addr = f"{random.choice(count_ips)}/counter_service"
+
+    log_task = measure_request(state.client.get, log_addr+"/user/"+userId)
+    count_task = measure_request(state.client.get, count_addr+"/user/"+userId)
 
     (log_response, log_t), (count_response, count_t) = await asyncio.gather(log_task, count_task)
     state.log_time += log_t
@@ -71,7 +110,10 @@ async def get_user_balance_transactions(userId: str):
 
 @app.get("/facade_service/accounts")
 async def get_accounts():
-    count_task = measure_request(state.client.get, COUNT_URL+"/accounts")
+    count_ips = await state.client.post(CONFIG_URL, json={"service_name": "count"})
+    count_addr = f"{random.choice(count_ips)}/counter_service"
+
+    count_task = measure_request(state.client.get, count_addr+"/accounts")
     (count_response, count_t) = await count_task
     state.count_time += count_t
     return count_response.json()

@@ -1,10 +1,54 @@
 import uvicorn
 from fastapi import FastAPI, Depends
+from contextlib import asynccontextmanager
 from pydantic import BaseModel
 import psycopg
 from psycopg.rows import dict_row
-from psycopg_pool import AsyncConnectionPool
-import os
+from kafka import KafkaConsumer
+from kafka.errors import NoBrokersAvailable
+import os, socket, time, json
+import httpx
+import asyncio
+
+
+consumer = None
+attempts=50
+while True:
+    try:
+        consumer = KafkaConsumer(
+            'transactions',
+            bootstrap_servers=['kafka:9092'],
+            auto_offset_reset='earliest',
+            enable_auto_commit=True,
+            group_id='transactions-group',
+            value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+        )
+        break
+    except NoBrokersAvailable:
+        if attempts > 0:
+            attempts -= 1
+            time.sleep(2)
+        else:
+            print("Error: failed to connect to Kafka.")
+            exit(1)
+
+async def consume_kafka():
+    try:
+        for message in consumer:
+            data = message.value
+            await save_to_db(data)
+    except Exception as e:
+        print(f"Kafka consume error: {e}")
+
+
+async def save_to_db(data):
+    async with await psycopg.AsyncConnection.connect(conn_string) as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "INSERT INTO balances (user_id, balance) VALUES (%s, %s) "
+                "ON CONFLICT (user_id) DO UPDATE SET balance = balances.balance + EXCLUDED.balance;",
+                (data["user_Id"], data["amount"])
+            )
 
 class Transaction(BaseModel):
     transaction_ID: int
@@ -14,33 +58,28 @@ class Transaction(BaseModel):
 app = FastAPI()
 balance_table = {}
 
+CONFIG_URL = os.getenv("CONFIG_URL", "http://config-service:8083")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    hostname = socket.gethostname()
+    ip_addr = socket.gethostbyname(hostname)
+    registration_data = {
+        "service_name": "counter",
+        "service_ip": f"{ip_addr}:8081"
+    }
+    async with httpx.AsyncClient() as client:
+        await client.post(CONFIG_URL, json=registration_data)
+    
+    kafka_task = asyncio.create_task(consume_kafka())
+    yield
+
 
 conn_string = os.getenv("DATABASE_URL")
-pool = AsyncConnectionPool(conn_string, open=False)
-
-@app.on_event("startup")
-async def open_pool():
-    await pool.open()
 
 async def get_conn():
-    async with await pool.connection() as conn:
+    async with await psycopg.AsyncConnection.connect(conn_string, row_factory=dict_row) as conn:
         yield conn
-
-
-@app.post("/counter_service")
-async def post_counter(transaction: Transaction, conn=Depends(get_conn)):
-    sql = """
-        INSERT INTO balances (user_id, balance)
-        VALUES (%s, %s)
-        ON CONFLICT (user_id)
-        DO UPDATE SET balance = balances.balance + EXCLUDED.balance;
-    """
-    sql_2 = "SELECT * FROM balances where user_id = %s ;"
-
-    async with conn.cursor() as cursor:
-        await cursor.execute(sql, (transaction.user_Id, transaction.amount))
-        await cursor.execute(sql_2, (transaction.user_Id,))
-        return await cursor.fetchone()
 
 
 
