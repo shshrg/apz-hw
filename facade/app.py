@@ -64,67 +64,83 @@ app = FastAPI(lifespan=lifespan)
 
 async def measure_request(func, *args, **kwargs):
     start_time = time.perf_counter()
-    response = await func(*args, **kwargs)
-    end_time = time.perf_counter()
-    return response, end_time - start_time
+    try:
+        response = await func(*args, **kwargs)
+    except Exception as e:
+        response = e
+    finally:
+        end_time = time.perf_counter()
+        return response, end_time - start_time
 
 
 
 @app.post("/facade_service")
 async def post_facade(msg: ClientMessage):
-    log_ips = []
-    while not log_ips:
-        log_ips = await state.client.get(f"{CONFIG_URL}/logging")
-
-    log_addr = f"http://{random.choice(log_ips.json())}/logging_service"
-
-
+    log_ips = await state.client.get(f"{CONFIG_URL}/logging")
 
 
     timestamp = int(time.time())
-    log_task = measure_request(state.client.post, log_addr, json={"transaction_ID": timestamp,
-                                                            "user_Id": msg.user_Id,
-                                                            "amount": msg.amount})
-
     producer.send('transaction-events', {"transaction_ID": timestamp,
-                                                            "user_Id": msg.user_Id,
-                                                            "amount": msg.amount})
-    _, log_t = await(log_task)
-    state.log_time += log_t
-    return {"transaction_ID": timestamp}
+                                         "user_Id": msg.user_Id,
+                                         "amount": msg.amount})
+
+    if log_ips.json():
+        log_addr = f"http://{random.choice(log_ips.json())}/logging_service"
+        log_task = measure_request(state.client.post, log_addr, json={"transaction_ID": timestamp,
+                                                                "user_Id": msg.user_Id,
+                                                                "amount": msg.amount})
+        _, log_t = await(log_task)
+        state.log_time += log_t
+        return {"transaction_ID": timestamp}
+    return {"transaction_ID": "logging-service unavailible"}
+
 
 
 @app.get("/facade_service/user/{userId}")
 async def get_user_balance_transactions(userId: str):
-    log_ips, count_ips = [], []
-    while not log_ips or not count_ips:
-        log_ips = await state.client.get(f"{CONFIG_URL}/logging")
-        count_ips = await state.client.get(f"{CONFIG_URL}/counter")
+    log_ips = await state.client.get(f"{CONFIG_URL}/logging")
+    count_ips = await state.client.get(f"{CONFIG_URL}/counter")
 
-    log_addr = f"http://{random.choice(log_ips.json())}/logging_service"
-    count_addr = f"http://{random.choice(count_ips.json())}/counter_service"
+    tasks = []
 
-    log_task = measure_request(state.client.get, log_addr+"/user/"+userId)
-    count_task = measure_request(state.client.get, count_addr+"/user/"+userId)
+    log_available = bool(log_ips.json())
+    count_available = bool(count_ips.json())
 
-    (log_response, log_t), (count_response, count_t) = await asyncio.gather(log_task, count_task)
-    state.log_time += log_t
-    state.count_time += count_t
-    return {"balance": count_response.json(),
-            "transactions": log_response.json()}
+    if log_available:
+        log_addr = f"http://{random.choice(log_ips.json())}/logging_service"
+        log_task = measure_request(state.client.get, log_addr+"/user/"+userId)
+        tasks.append(log_task)
+    if count_available:
+        count_addr = f"http://{random.choice(count_ips.json())}/counter_service"
+        count_task = measure_request(state.client.get, count_addr+"/user/"+userId)
+        tasks.append(count_task)
+
+    result = await asyncio.gather(*tasks)
+    log_response, count_response = None, None
+    i = 0
+    if log_available:
+        log_response = result[0][0].json() if not isinstance(result[0][0], Exception) else None
+        state.log_time += result[0][1]
+        i = 1
+    if count_available:
+        count_response = result[i][0].json()["balance"] if not isinstance(result[i][0], Exception) else None
+        state.count_time += result[i][1]
+        
+    return {"balance": count_response,
+            "transactions": log_response}
 
 
 @app.get("/facade_service/accounts")
 async def get_accounts():
-    count_ips = []
-    while not count_ips:
-        count_ips = await state.client.get(f"{CONFIG_URL}/counter")
-    count_addr = f"http://{random.choice(count_ips.json())}/counter_service"
+    count_ips = await state.client.get(f"{CONFIG_URL}/counter")
+    if count_ips.json():
+        count_addr = f"http://{random.choice(count_ips.json())}/counter_service"
 
-    count_task = measure_request(state.client.get, count_addr+"/accounts")
-    (count_response, count_t) = await count_task
-    state.count_time += count_t
-    return count_response.json()
+        count_task = measure_request(state.client.get, count_addr+"/accounts")
+        (count_response, count_t) = await count_task
+        state.count_time += count_t
+        if not isinstance(count_response, Exception):
+            return count_response.json()
 
 
 

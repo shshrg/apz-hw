@@ -1,19 +1,113 @@
-###
+### msg 1
 POST http://localhost:8080/facade_service
 Content-Type: application/json
 
 {
     "user_Id": 100,
-    "amount": -500
+    "amount": 600
 }
-###
+
+### msg 2
 POST http://localhost:8080/facade_service
 Content-Type: application/json
 
 {
-    "user_Id": 101,
-    "amount": 150
+    "user_Id": 100,
+    "amount": 500
 }
+
+### msg 3
+POST http://localhost:8080/facade_service
+Content-Type: application/json
+
+{
+    "user_Id": 100,
+    "amount": -100
+}
+
+### msg 4
+POST http://localhost:8080/facade_service
+Content-Type: application/json
+
+{
+    "user_Id": 200,
+    "amount": 1600
+}
+
+### msg 5
+POST http://localhost:8080/facade_service
+Content-Type: application/json
+
+{
+    "user_Id": 200,
+    "amount": 1400
+}
+
+### msg 6
+POST http://localhost:8080/facade_service
+Content-Type: application/json
+
+{
+    "user_Id": 300,
+    "amount": 10000
+}
+
+### msg 7
+POST http://localhost:8080/facade_service
+Content-Type: application/json
+
+{
+    "user_Id": 300,
+    "amount": -9000
+}
+
+### msg 8
+POST http://localhost:8080/facade_service
+Content-Type: application/json
+
+{
+    "user_Id": 400,
+    "amount": 500
+}
+
+### msg 9
+POST http://localhost:8080/facade_service
+Content-Type: application/json
+
+{
+    "user_Id": 500,
+    "amount": 1000
+}
+
+### msg 10
+POST http://localhost:8080/facade_service
+Content-Type: application/json
+
+{
+    "user_Id": 500,
+    "amount": 2500
+}
+
+
+### msg 11
+POST http://localhost:8080/facade_service
+Content-Type: application/json
+
+{
+    "user_Id": 100,
+    "amount": 2500
+}
+
+### msg 12
+POST http://localhost:8080/facade_service
+Content-Type: application/json
+
+{
+    "user_Id": 100,
+    "amount": 2500
+}
+
+
 ###
 GET http://localhost:8080/facade_service/user/100
 
