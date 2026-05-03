@@ -4,29 +4,39 @@ from contextlib import asynccontextmanager
 from pydantic import BaseModel
 import psycopg
 from psycopg.rows import dict_row
-from aiokafka import AIOKafkaConsumer
-import os, socket, time, json
-import httpx
+import hazelcast
+import os
 import asyncio
 
+balance_table = {}
+hz_mq = None
+conn_string = os.getenv("DATABASE_URL")
 
-async def consume_kafka():
-    consumer = AIOKafkaConsumer(
-        'transaction-events',
-        bootstrap_servers=['kafka:9092'],
-        group_id='transactions-group',
-        value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    client = hazelcast.HazelcastClient(
+        cluster_members=["hazelcast-node:5701"],
+        cluster_name="dev"
     )
-    await consumer.start()
-    try:
-        async for message in consumer:
-            data = message.value
-            await save_to_db(data)
-    except Exception as e:
-        print(f"Kafka consume error: {e}")
-    finally:
-        await consumer.stop()
+    global hz_mq
+    hz_mq = client.get_queue("message-queue")
 
+    task = asyncio.create_task(consume())
+    yield
+
+    task.cancel()
+    client.shutdown()
+
+app = FastAPI(lifespan=lifespan)
+
+async def consume():
+    while True:
+        try:
+            head = await asyncio.wrap_future(hz_mq.take())
+            await save_to_db(head)
+        except Exception as e:
+            print(f"Error in consume loop: {e}")
+            await asyncio.sleep(1)
 
 async def save_to_db(data):
     async with await psycopg.AsyncConnection.connect(conn_string) as conn:
@@ -37,22 +47,6 @@ async def save_to_db(data):
                 (data["user_Id"], data["amount"])
             )
 
-class Transaction(BaseModel):
-    transaction_ID: int
-    user_Id: int
-    amount: int
-
-
-balance_table = {}
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    kafka_task = asyncio.create_task(consume_kafka())
-    yield
-
-app = FastAPI(lifespan=lifespan)
-
-conn_string = os.getenv("DATABASE_URL")
 
 async def get_conn():
     async with await psycopg.AsyncConnection.connect(conn_string, row_factory=dict_row) as conn:

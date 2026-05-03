@@ -3,8 +3,6 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
 import hazelcast
-import httpx
-import socket, os
 
 class Transaction(BaseModel):
     transaction_ID: int

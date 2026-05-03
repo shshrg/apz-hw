@@ -2,29 +2,10 @@ import uvicorn
 from fastapi import FastAPI
 import httpx
 import asyncio
-import time, os, json, socket, random
+import time
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
-from kafka import KafkaProducer
-from kafka.errors import NoBrokersAvailable
-
-
-
-producer = None
-for i in range(50):
-    try:
-        producer = KafkaProducer(
-            bootstrap_servers=['kafka:9092'],
-            value_serializer=lambda v: json.dumps(v).encode('utf-8')
-        )
-        print("Connected to Kafka successfully.")
-        break
-    except NoBrokersAvailable:
-        time.sleep(2)
-if not producer:
-    raise Exception("Could not connect to Kafka. Restarting...")
-
-
+import hazelcast
 
 class ClientMessage(BaseModel):
     user_Id: int
@@ -35,7 +16,7 @@ class ServiceState:
     log_time: float = 0
     count_time: float = 0
 
-
+hz_mq = None
 state = ServiceState()
 
 @asynccontextmanager
@@ -43,11 +24,18 @@ async def lifespan(app: FastAPI):
     limits = httpx.Limits(max_connections=1000, max_keepalive_connections=500)
     state.client = httpx.AsyncClient(timeout=None, limits=limits)
 
+    client = hazelcast.HazelcastClient(
+        cluster_members=["hazelcast-node:5701"],
+        cluster_name="dev"
+    )
+    global hz_mq
+    hz_mq = client.get_queue("message-queue")
+
     yield
     await state.client.aclose()
+    client.shutdown()
 
 app = FastAPI(lifespan=lifespan)
-
 
 
 async def measure_request(func, *args, **kwargs):
@@ -60,13 +48,12 @@ async def measure_request(func, *args, **kwargs):
         end_time = time.perf_counter()
         return response, end_time - start_time
 
-
-
 @app.post("/facade_service")
 async def post_facade(msg: ClientMessage):
 
     timestamp = int(time.time())
-    producer.send('transaction-events', {"transaction_ID": timestamp,
+
+    hz_mq.offer({"transaction_ID": timestamp,
                                          "user_Id": msg.user_Id,
                                          "amount": msg.amount})
 
@@ -80,8 +67,6 @@ async def post_facade(msg: ClientMessage):
     state.log_time += log_t
     return {"transaction_ID": timestamp}
     # return {"transaction_ID": "logging-service unavailible"}
-
-
 
 @app.get("/facade_service/user/{userId}")
 async def get_user_balance_transactions(userId: str):
