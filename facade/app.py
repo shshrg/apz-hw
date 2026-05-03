@@ -139,7 +139,7 @@ async def get_accounts():
     if counter_addresses:
         count_addr = random.choice(counter_addresses)
 
-        count_task = measure_request(state.client.get, f"http://{count_addr['ip']:{count_addr['port']}}/counter_service/accounts")
+        count_task = measure_request(state.client.get, f"http://{count_addr['ip']}:{count_addr['port']}/counter_service/accounts")
         (count_response, count_t) = await count_task
         state.count_time += count_t
         if not isinstance(count_response, Exception):
