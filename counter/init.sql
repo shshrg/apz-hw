@@ -1,0 +1,8 @@
+\c counter-db
+
+CREATE TABLE IF NOT EXISTS balances (
+    user_id INT PRIMARY KEY,
+    balance DECIMAL(12,2) DEFAULT 0.00
+);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO counteruser;

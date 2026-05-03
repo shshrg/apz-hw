@@ -1,0 +1,107 @@
+name: "micro_mq"
+services:
+  facade-service:
+    build: ./facade
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    ports:
+      - "8080:8080"
+    environment:
+      CONFIG_URL: "http://config-service:8083"
+      
+    depends_on:
+      kafka:
+        condition: service_started
+  
+  logging-service:
+    build: ./logging
+    depends_on:
+      hazelcast-node:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      CONFIG_URL: "http://config-service:8083"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+      replicas: 3
+
+  counter-service:
+    build: ./counter
+    environment:
+      DATABASE_URL: "postgres://counteruser:12345@counter-db:5432/counter-db"
+      CONFIG_URL: "http://config-service:8083"
+
+    depends_on:
+      counter-db:
+        condition: service_healthy
+  config-service:
+    container_name: config-service
+    build: ./config
+    restart: unless-stopped
+  counter-db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: "12345"
+      POSTGRES_DB: "counter-db"
+      POSTGRES_USER: "counteruser"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./counter/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - counter-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U counteruser -d counter-db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+  hazelcast-node:
+    image: hazelcast/hazelcast:5.3
+    ports:
+      - "5701:5701"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5701/hazelcast/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093'
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3
+    
+volumes:
+  counter-data:

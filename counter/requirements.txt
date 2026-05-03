@@ -1,0 +1,7 @@
+aiokafka==0.12.0
+fastapi==0.128.8
+httpx==0.28.1
+psycopg[c]==3.2.13
+psycopg-pool==3.2.5
+pydantic==2.12.5
+uvicorn==0.39.0
