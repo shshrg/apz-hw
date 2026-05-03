@@ -1,9 +1,14 @@
-### Task 4 - Microservices with Message Queue
-To launch the system, use docker compose. Run the following commands one by one:
+### Task 5 - Microservices with Consul (Kubernetes)
+To start the system, you need to use minikube:
 ```
-docker compose up --build -d kafka hazelcast-node counter-db
-docker compose up --build -d config-service
-docker compose up --build -d facade-service counter-service logging-service
+minikube start --driver=docker
 ```
-You can then test the system by sending POST or GET requests to facade-services. Some example requests are included in ```test.rest```.
-Further explanations about the system can be found in my task report.
+To create pods for Hazelcast, Kafka and Postgres, I used [helm](https://helm.sh/uk/):
+```
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo add hazelcast https://hazelcast-charts.s3.amazonaws.com/
+helm repo update
+helm install counter-db bitnami/postgresql -f .\k8s\postgres-values.yaml
+helm install hazelcast-node hazelcast/hazelcast -f .\k8s\hazelcast-values.yaml
+```
+

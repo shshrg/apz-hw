@@ -1,0 +1,26 @@
+image:
+  registry: docker.io
+  repository: bitnamilegacy/postgresql
+  tag: 15.7.0-debian-12-r12
+
+
+auth:
+  username: "counteruser"
+  password: "12345"
+  database: "counter-db"
+
+primary:
+  resources:
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  initdbConfigMap: "pg-init-sql"
+
+primary:
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"

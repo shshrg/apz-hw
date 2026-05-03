@@ -1,0 +1,23 @@
+image:
+  repository: hazelcast/hazelcast
+  tag: "5.3"
+
+resources:
+  limits:
+    cpu: "1.0"
+    memory: 2Gi
+
+hazelcast:
+  network:
+    rest:
+      enabled: true
+
+resources:
+  requests:
+    memory: "512Mi"
+    cpu: "200m"
+  limits:
+    memory: "1Gi"
+    cpu: "1000m"
+mancenter:
+  enabled: false
