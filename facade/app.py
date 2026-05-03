@@ -49,12 +49,6 @@ async def lifespan(app: FastAPI):
     limits = httpx.Limits(max_connections=1000, max_keepalive_connections=500)
     state.client = httpx.AsyncClient(timeout=None, limits=limits)
 
-    hostname = socket.gethostname()
-    ip_addr = socket.gethostbyname(hostname)
-    registration_data = ServiceRegistration(service_name="facade",
-                                            service_ip=f"{ip_addr}:8080")
-    await state.client.post(CONFIG_URL, json=registration_data.model_dump())
-
     yield
     await state.client.aclose()
 

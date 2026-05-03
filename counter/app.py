@@ -10,27 +10,6 @@ import httpx
 import asyncio
 
 
-# consumer = None
-# attempts=50
-# while True:
-#     try:
-#         consumer = KafkaConsumer(
-#             'transactions',
-#             bootstrap_servers=['kafka:9092'],
-#             auto_offset_reset='earliest',
-#             enable_auto_commit=True,
-#             group_id='transactions-group',
-#             value_deserializer=lambda x: json.loads(x.decode('utf-8'))
-#         )
-#         break
-#     except NoBrokersAvailable:
-#         if attempts > 0:
-#             attempts -= 1
-#             time.sleep(2)
-#         else:
-#             print("Error: failed to connect to Kafka.")
-#             exit(1)
-
 async def consume_kafka():
     consumer = AIOKafkaConsumer(
         'transaction-events',
@@ -74,13 +53,6 @@ CONFIG_URL = os.getenv("CONFIG_URL", "http://config-service:8083")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    hostname = socket.gethostname()
-    ip_addr = socket.gethostbyname(hostname)
-    registration_data = ServiceRegistration(service_name="counter",
-                                            service_ip=f"{ip_addr}:8081")
-    async with httpx.AsyncClient() as client:
-        await client.post(CONFIG_URL, json=registration_data.model_dump())
-    
     kafka_task = asyncio.create_task(consume_kafka())
     yield
 

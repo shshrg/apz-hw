@@ -28,12 +28,6 @@ async def lifespan(app: FastAPI):
     global logging_map
     logging_map = client.get_map("logging-map")
 
-    hostname = socket.gethostname()
-    ip_addr = socket.gethostbyname(hostname)
-    registration_data = ServiceRegistration(service_name="logging",
-                                            service_ip=f"{ip_addr}:8082")
-    async with httpx.AsyncClient() as client:
-        await client.post(CONFIG_URL, json=registration_data.model_dump())
     yield
 
     client.shutdown()
