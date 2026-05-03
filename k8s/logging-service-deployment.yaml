@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    io.kompose.service: logging-service
+  name: logging-service
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      io.kompose.service: logging-service
+  template:
+    metadata:
+      labels:
+        io.kompose.service: logging-service
+    spec:
+      containers:
+          image: logging-service
+          name: logging-service
+          resources:
+            limits:
+              cpu: 500m
+              memory: "536870912"
+      restartPolicy: Always

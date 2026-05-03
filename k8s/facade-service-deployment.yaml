@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    io.kompose.service: facade-service
+  name: facade-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: facade-service
+  template:
+    metadata:
+      labels:
+        io.kompose.service: facade-service
+    spec:
+      containers:
+          image: facade-service
+          name: facade-service
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          resources:
+            limits:
+              cpu: 500m
+              memory: "536870912"
+      restartPolicy: Always

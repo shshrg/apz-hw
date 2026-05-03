@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    io.kompose.service: counter-service
+  name: counter-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: counter-service
+  template:
+    metadata:
+      labels:
+        io.kompose.service: counter-service
+    spec:
+      containers:
+        # - env:
+        #     - name: DATABASE_URL
+        #       value: postgres://counteruser:12345@counter-db:5432/counter-db
+          image: counter-service
+          name: counter-service
+      restartPolicy: Always

@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    io.kompose.service: config-service
+  name: config-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: config-service
+  template:
+    metadata:
+      labels:
+        io.kompose.service: config-service
+    spec:
+      containers:
+        - image: config-service
+          name: config-service
+      restartPolicy: Always
