@@ -5,9 +5,9 @@ metadata:
     io.kompose.service: facade-service
   name: facade-service
 spec:
+  type: LoadBalancer
   ports:
-    - name: "8080"
-      port: 8080
+    - port: 8080
       targetPort: 8080
   selector:
     io.kompose.service: facade-service

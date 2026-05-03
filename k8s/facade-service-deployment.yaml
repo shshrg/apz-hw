@@ -1,10 +1,11 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   labels:
     io.kompose.service: facade-service
   name: facade-service
 spec:
+  serviceName: "facade-service"
   replicas: 1
   selector:
     matchLabels:
@@ -14,14 +15,16 @@ spec:
       labels:
         io.kompose.service: facade-service
     spec:
+      serviceAccountName: facade-service
       containers:
-          image: facade-service
-          name: facade-service
-          ports:
-            - containerPort: 8080
-              protocol: TCP
-          resources:
-            limits:
-              cpu: 500m
-              memory: "536870912"
+          - image: facade-service
+            name: facade-service
+            imagePullPolicy: IfNotPresent
+            ports:
+              - containerPort: 8080
+                protocol: TCP
+            resources:
+              limits:
+                cpu: 500m
+                memory: "536870912"
       restartPolicy: Always

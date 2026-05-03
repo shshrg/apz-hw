@@ -15,10 +15,11 @@ spec:
         io.kompose.service: logging-service
     spec:
       containers:
-          image: logging-service
-          name: logging-service
-          resources:
-            limits:
-              cpu: 500m
-              memory: "536870912"
+          - name: logging-service
+            image: logging-service
+            imagePullPolicy: IfNotPresent
+            resources:
+              limits:
+                cpu: 500m
+                memory: "536870912"
       restartPolicy: Always

@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: facade-service
+  namespace: default
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: endpoint-reader
+  namespace: default
+rules:
+- apiGroups: [""]
+  resources: ["endpoints"]
+  verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: read-endpoints-binding
+  namespace: default
+subjects:
+- kind: ServiceAccount
+  name: facade-service
+  namespace: default
+roleRef:
+  kind: Role
+  name: endpoint-reader
+  apiGroup: rbac.authorization.k8s.io

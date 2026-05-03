@@ -37,7 +37,7 @@ async def lifespan(app: FastAPI):
     v1 = client.CoreV1Api()
 
     global hz_mq
-    hz_mq = client.get_queue("message-queue")
+    hz_mq = hz_client.get_queue("message-queue")
 
     yield
     await state.client.aclose()
@@ -83,9 +83,10 @@ async def post_facade(msg: ClientMessage):
         return {"error": "logging-service unavailible"}
 
     log_addr = random.choice(logging_addresses)
-    log_task = measure_request(state.client.post, log_addr, json={"transaction_ID": timestamp,
-                                                            "user_Id": msg.user_Id,
-                                                            "amount": msg.amount})
+    log_task = measure_request(state.client.post, f"http://{log_addr['ip']}:{log_addr['port']}/logging_service",
+                               json={"transaction_ID": timestamp,
+                                     "user_Id": msg.user_Id,
+                                     "amount": msg.amount})
     _, log_t = await(log_task)
     state.log_time += log_t
     return {"transaction_ID": timestamp}
@@ -98,14 +99,14 @@ async def get_user_balance_transactions(userId: str):
 
     if logging_addresses:
         log_addr = random.choice(logging_addresses)
-        log_task = measure_request(state.client.get, f"http://{log_addr["ip"]}:{log_addr["port"]}/user/{userId}")
+        log_task = measure_request(state.client.get, f"http://{log_addr['ip']}:{log_addr['port']}/user/{userId}")
         tasks.append(log_task)
     
 
     counter_addresses = get_service_ips("counter-service")
     if counter_addresses:
         count_addr = random.choice(counter_addresses)
-        count_task = measure_request(state.client.get, f"http://{count_addr["ip"]}:{count_addr["port"]}/user/{userId}")
+        count_task = measure_request(state.client.get, f"http://{count_addr['ip']}:{count_addr['port']}/user/{userId}")
         tasks.append(count_task)
 
     result = await asyncio.gather(*tasks)
@@ -130,7 +131,7 @@ async def get_accounts():
     if counter_addresses:
         count_addr = random.choice(counter_addresses)
 
-        count_task = measure_request(state.client.get, count_addr+"/accounts")
+        count_task = measure_request(state.client.get, f"http://{count_addr['ip']:{count_addr['port']}}/accounts")
         (count_response, count_t) = await count_task
         state.count_time += count_t
         if not isinstance(count_response, Exception):

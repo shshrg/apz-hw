@@ -5,6 +5,7 @@ metadata:
     io.kompose.service: logging-service
   name: logging-service
 spec:
+  clusterIP: None
   ports:
     - name: "8082"
       port: 8082
