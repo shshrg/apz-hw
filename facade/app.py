@@ -27,11 +27,12 @@ async def lifespan(app: FastAPI):
     limits = httpx.Limits(max_connections=1000, max_keepalive_connections=500)
     state.client = httpx.AsyncClient(timeout=None, limits=limits)
 
-    client = hazelcast.HazelcastClient(
+    hz_client = hazelcast.HazelcastClient(
         cluster_members=["hazelcast-node:5701"],
         cluster_name="dev"
     )
 
+    global v1
     config.load_incluster_config()
     v1 = client.CoreV1Api()
 
@@ -40,7 +41,7 @@ async def lifespan(app: FastAPI):
 
     yield
     await state.client.aclose()
-    client.shutdown()
+    hz_client.shutdown()
 
 app = FastAPI(lifespan=lifespan)
 
