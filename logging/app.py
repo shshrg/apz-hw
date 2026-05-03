@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
 import hazelcast
+import os
 
 class Transaction(BaseModel):
     transaction_ID: int
@@ -10,11 +11,12 @@ class Transaction(BaseModel):
     amount: int
 
 logging_map = None
+HZ_URL = os.getenv("HAZELCAST_URL", "localhost:5701")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     client = hazelcast.HazelcastClient(
-        cluster_members=["hazelcast-node:5701"],
+        cluster_members=[HZ_URL],
         cluster_name="dev"
     )
     global logging_map

@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from contextlib import asynccontextmanager
 import hazelcast
 from kubernetes import client, config
+import os
 
 class ClientMessage(BaseModel):
     user_Id: int
@@ -21,6 +22,7 @@ class ServiceState:
 hz_mq = None
 v1 = None
 state = ServiceState()
+HZ_URL = os.getenv("HAZELCAST_URL", "localhost:5701")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -28,7 +30,7 @@ async def lifespan(app: FastAPI):
     state.client = httpx.AsyncClient(timeout=None, limits=limits)
 
     hz_client = hazelcast.HazelcastClient(
-        cluster_members=["hazelcast-node:5701"],
+        cluster_members=[HZ_URL],
         cluster_name="dev"
     )
 
@@ -59,13 +61,16 @@ async def measure_request(func, *args, **kwargs):
 def get_service_ips(service_name, namespace="default"):
     endpoints = v1.read_namespaced_endpoints(service_name, namespace)
     instances = []
-    for subset in endpoints.subsets:
-        for address in subset.addresses:
-            for port in subset.ports:
-                instances.append({
-                    "ip": address.ip,
-                    "port": port.port,
-                })
+    if endpoints and endpoints.subsets:
+        for subset in endpoints.subsets:
+            if subset.addresses:
+                for address in subset.addresses:
+                    if subset.ports:
+                        for port in subset.ports:
+                            instances.append({
+                                "ip": address.ip,
+                                "port": port.port,
+                        })
     return instances
 
 @app.post("/facade_service")
@@ -99,14 +104,14 @@ async def get_user_balance_transactions(userId: str):
 
     if logging_addresses:
         log_addr = random.choice(logging_addresses)
-        log_task = measure_request(state.client.get, f"http://{log_addr['ip']}:{log_addr['port']}/user/{userId}")
+        log_task = measure_request(state.client.get, f"http://{log_addr['ip']}:{log_addr['port']}/logging_service/user/{userId}")
         tasks.append(log_task)
     
 
     counter_addresses = get_service_ips("counter-service")
     if counter_addresses:
         count_addr = random.choice(counter_addresses)
-        count_task = measure_request(state.client.get, f"http://{count_addr['ip']}:{count_addr['port']}/user/{userId}")
+        count_task = measure_request(state.client.get, f"http://{count_addr['ip']}:{count_addr['port']}/counter_service/user/{userId}")
         tasks.append(count_task)
 
     result = await asyncio.gather(*tasks)
@@ -118,7 +123,10 @@ async def get_user_balance_transactions(userId: str):
         state.log_time += result[0][1]
         i = 1
     if counter_addresses:
-        count_response = result[i][0].json()["balance"] if not isinstance(result[i][0], Exception) else None
+        try:
+            count_response = result[i][0].json()["balance"] if not isinstance(result[i][0], Exception) else None
+        except Exception:
+            count_response = {"error": "internal error in counter-service"}
         state.count_time += result[i][1]
         
     return {"balance": count_response,
@@ -131,11 +139,13 @@ async def get_accounts():
     if counter_addresses:
         count_addr = random.choice(counter_addresses)
 
-        count_task = measure_request(state.client.get, f"http://{count_addr['ip']:{count_addr['port']}}/accounts")
+        count_task = measure_request(state.client.get, f"http://{count_addr['ip']:{count_addr['port']}}/counter_service/accounts")
         (count_response, count_t) = await count_task
         state.count_time += count_t
         if not isinstance(count_response, Exception):
             return count_response.json()
+        else:
+            return {"error": "internal error in counter-service"}
     return {"error": "counter-service unavailable"}
 
 

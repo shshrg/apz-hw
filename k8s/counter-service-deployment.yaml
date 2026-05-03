@@ -18,4 +18,15 @@ spec:
           - name: counter-service
             image: counter-service
             imagePullPolicy: IfNotPresent
+            env:
+              - name: DATABASE_URL
+                valueFrom:
+                  secretKeyRef:
+                    name: counter-db-secret
+                    key: DATABASE_URL
+              - name: HAZELCAST_URL
+                valueFrom:
+                  configMapKeyRef:
+                    name: hazelcast-config
+                    key: HAZELCAST_URL
       restartPolicy: Always

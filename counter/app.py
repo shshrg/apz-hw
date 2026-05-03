@@ -10,16 +10,23 @@ import asyncio
 
 balance_table = {}
 hz_mq = None
-conn_string = os.getenv("DATABASE_URL")
+CONN_STRING = os.getenv("DATABASE_URL")
+HZ_URL = os.getenv("HAZELCAST_URL", "localhost:5701")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    print(f"Connecting to Hazelcast at {HZ_URL}...")
     client = hazelcast.HazelcastClient(
-        cluster_members=["hazelcast-node:5701"],
-        cluster_name="dev"
+        cluster_members=[HZ_URL],
+        cluster_name="dev",
     )
+    print("Connected to Hazelcast successfully.")
     global hz_mq
     hz_mq = client.get_queue("message-queue")
+
+    print("Initializing database...")
+    await init_db()
+    print("Database initialized.")
 
     task = asyncio.create_task(consume())
     yield
@@ -30,16 +37,30 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 async def consume():
+    loop = asyncio.get_running_loop()
     while True:
         try:
-            head = await asyncio.wrap_future(hz_mq.take())
-            await save_to_db(head)
+            data = await loop.run_in_executor(None, lambda: hz_mq.take().result())
+            if data:
+                print(f"saving data to db: {data}")
+                await save_to_db(data)
         except Exception as e:
+            # continue
             print(f"Error in consume loop: {e}")
             await asyncio.sleep(1)
 
+async def init_db():
+    async with await psycopg.AsyncConnection.connect(CONN_STRING) as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("""
+                CREATE TABLE IF NOT EXISTS balances (
+                    user_id VARCHAR PRIMARY KEY,
+                    balance DECIMAL(12,2) DEFAULT 0.00
+                );
+            """)
+
 async def save_to_db(data):
-    async with await psycopg.AsyncConnection.connect(conn_string) as conn:
+    async with await psycopg.AsyncConnection.connect(CONN_STRING) as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 "INSERT INTO balances (user_id, balance) VALUES (%s, %s) "
@@ -49,7 +70,7 @@ async def save_to_db(data):
 
 
 async def get_conn():
-    async with await psycopg.AsyncConnection.connect(conn_string, row_factory=dict_row) as conn:
+    async with await psycopg.AsyncConnection.connect(CONN_STRING, row_factory=dict_row) as conn:
         yield conn
 
 
