@@ -11,13 +11,7 @@ class Transaction(BaseModel):
     user_Id: int
     amount: int
 
-class ServiceRegistration(BaseModel):
-    service_name: str
-    service_ip: str
-
 logging_map = None
-CONFIG_URL = os.getenv("CONFIG_URL", "http://config-service:8083")
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

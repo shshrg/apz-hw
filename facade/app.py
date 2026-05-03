@@ -25,16 +25,10 @@ if not producer:
     raise Exception("Could not connect to Kafka. Restarting...")
 
 
-CONFIG_URL = os.getenv("CONFIG_URL", "http://config-service:8083")
-
 
 class ClientMessage(BaseModel):
     user_Id: int
     amount: int
-
-class ServiceRegistration(BaseModel):
-    service_name: str
-    service_ip: str
 
 class ServiceState:
     client: httpx.AsyncClient = None
@@ -70,55 +64,48 @@ async def measure_request(func, *args, **kwargs):
 
 @app.post("/facade_service")
 async def post_facade(msg: ClientMessage):
-    log_ips = await state.client.get(f"{CONFIG_URL}/logging")
-
 
     timestamp = int(time.time())
     producer.send('transaction-events', {"transaction_ID": timestamp,
                                          "user_Id": msg.user_Id,
                                          "amount": msg.amount})
 
-    if log_ips.json():
-        log_addr = f"http://{random.choice(log_ips.json())}/logging_service"
-        log_task = measure_request(state.client.post, log_addr, json={"transaction_ID": timestamp,
-                                                                "user_Id": msg.user_Id,
-                                                                "amount": msg.amount})
-        _, log_t = await(log_task)
-        state.log_time += log_t
-        return {"transaction_ID": timestamp}
-    return {"transaction_ID": "logging-service unavailible"}
+
+    # TODO remove static address, add k8s logic
+    log_addr = f"http://logging-service/logging_service"
+    log_task = measure_request(state.client.post, log_addr, json={"transaction_ID": timestamp,
+                                                            "user_Id": msg.user_Id,
+                                                            "amount": msg.amount})
+    _, log_t = await(log_task)
+    state.log_time += log_t
+    return {"transaction_ID": timestamp}
+    # return {"transaction_ID": "logging-service unavailible"}
 
 
 
 @app.get("/facade_service/user/{userId}")
 async def get_user_balance_transactions(userId: str):
-    log_ips = await state.client.get(f"{CONFIG_URL}/logging")
-    count_ips = await state.client.get(f"{CONFIG_URL}/counter")
 
     tasks = []
+    # TODO
+    log_addr = f"http://logging-service/logging_service"
+    log_task = measure_request(state.client.get, log_addr+"/user/"+userId)
+    tasks.append(log_task)
+    
 
-    log_available = bool(log_ips.json())
-    count_available = bool(count_ips.json())
-
-    if log_available:
-        log_addr = f"http://{random.choice(log_ips.json())}/logging_service"
-        log_task = measure_request(state.client.get, log_addr+"/user/"+userId)
-        tasks.append(log_task)
-    if count_available:
-        count_addr = f"http://{random.choice(count_ips.json())}/counter_service"
-        count_task = measure_request(state.client.get, count_addr+"/user/"+userId)
-        tasks.append(count_task)
+    count_addr = f"http://counter-service/counter_service"
+    count_task = measure_request(state.client.get, count_addr+"/user/"+userId)
+    tasks.append(count_task)
 
     result = await asyncio.gather(*tasks)
     log_response, count_response = None, None
     i = 0
-    if log_available:
-        log_response = result[0][0].json() if not isinstance(result[0][0], Exception) else None
-        state.log_time += result[0][1]
-        i = 1
-    if count_available:
-        count_response = result[i][0].json()["balance"] if not isinstance(result[i][0], Exception) else None
-        state.count_time += result[i][1]
+
+    log_response = result[0][0].json() if not isinstance(result[0][0], Exception) else None
+    state.log_time += result[0][1]
+    i = 1
+    count_response = result[i][0].json()["balance"] if not isinstance(result[i][0], Exception) else None
+    state.count_time += result[i][1]
         
     return {"balance": count_response,
             "transactions": log_response}
@@ -126,15 +113,14 @@ async def get_user_balance_transactions(userId: str):
 
 @app.get("/facade_service/accounts")
 async def get_accounts():
-    count_ips = await state.client.get(f"{CONFIG_URL}/counter")
-    if count_ips.json():
-        count_addr = f"http://{random.choice(count_ips.json())}/counter_service"
+    # TODO
+    count_addr = f"http://counter-service/counter_service"
 
-        count_task = measure_request(state.client.get, count_addr+"/accounts")
-        (count_response, count_t) = await count_task
-        state.count_time += count_t
-        if not isinstance(count_response, Exception):
-            return count_response.json()
+    count_task = measure_request(state.client.get, count_addr+"/accounts")
+    (count_response, count_t) = await count_task
+    state.count_time += count_t
+    if not isinstance(count_response, Exception):
+        return count_response.json()
 
 
 
