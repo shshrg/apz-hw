@@ -42,11 +42,11 @@ async def consume():
         try:
             data = await loop.run_in_executor(None, lambda: hz_mq.take().result())
             if data:
-                print(f"saving data to db: {data}")
+                # print(f"saving data to db: {data}")
                 await save_to_db(data)
         except Exception as e:
             # continue
-            print(f"Error in consume loop: {e}")
+            # print(f"Error in consume loop: {e}")
             await asyncio.sleep(1)
 
 async def init_db():
